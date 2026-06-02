@@ -368,6 +368,29 @@ const LIBRARY = {
   ]
 };
 
+// Rules to infer which block an exercise belongs to after a swap
+const BLOCK_RULES = {
+  "upper-a": [
+    { block:1, test: n => n.includes("Smith Machine") },
+    { block:2, test: n => n.includes("Cable") || n.includes("Pulldown") || n.includes("Face Pull") },
+    { block:3, test: n => true },
+  ],
+  "lower": [
+    { block:1, test: n => n.includes("Smith Machine") || n.includes("(Smith)") },
+    { block:2, test: n => n.includes("Machine") },
+    { block:3, test: n => true },
+  ],
+  "upper-b": [
+    { block:1, test: n => n.includes("Cable") || n.includes("Pulldown") || n.includes("Face Pull") },
+    { block:2, test: n => true },
+  ]
+};
+
+function inferBlock(exName, type) {
+  const rules = BLOCK_RULES[type] || [];
+  return (rules.find(r => r.test(exName)) || {}).block || 1;
+}
+
 const MUSCLE_CSS = {Back:"back",Chest:"chest",Shoulders:"shoulders",Biceps:"biceps",Triceps:"triceps",Glutes:"glutes",Quads:"quads",Hamstrings:"hamstrings",Calves:"calves",Abs:"abs"};
 
 const STRIPE_COLORS = {
@@ -585,10 +608,12 @@ function renderWorkout() {
 
   // ── EXERCISES ──
   let _renderedBlock = null;
+  let _blockNum = 0;
   exList.forEach((ex, i) => {
     if (ex.block != null && ex.block !== _renderedBlock) {
       _renderedBlock = ex.block;
-      html += `<div class="block-header">Block ${ex.block}</div>`;
+      _blockNum++;
+      html += `<div class="block-header">Block ${_blockNum}</div>`;
     }
     const mc      = MUSCLE_CSS[ex.muscle] || "back";
     const stripe  = STRIPE_COLORS[mc] || "#EEE";
@@ -823,11 +848,21 @@ function openSwap(ei) {
 
 function doSwap(newName) {
   if (swapIdx === null) return;
+  const type    = SCHEDULE.find(d => d.day === activeDayKey)?.type;
+  const newBlock = inferBlock(newName, type);
+
   const ex = session.exercises[swapIdx];
   ex.name  = newName;
+  ex.block = newBlock;
   ex.sets  = ex.sets.map(() => ({w:"", r:"", done:false}));
-  activePlan.exercises[swapIdx].name = newName;
-  const type = SCHEDULE.find(d => d.day === activeDayKey)?.type;
+  activePlan.exercises[swapIdx].name  = newName;
+  activePlan.exercises[swapIdx].block = newBlock;
+
+  // Re-sort both arrays by block so the exercise moves to the right station group
+  const stableSort = arr => [...arr].sort((a, b) => (a.block||0) - (b.block||0));
+  session.exercises    = stableSort(session.exercises);
+  activePlan.exercises = stableSort(activePlan.exercises);
+
   savePlan(type, activePlan);
   saveSession();
   closeSwap();
