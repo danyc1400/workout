@@ -380,6 +380,11 @@ const BLOCK_RULES = {
     { block:2, test: n => n.includes("Machine") },
     { block:3, test: n => true },
   ],
+  "lower-b": [
+    { block:1, test: n => n.includes("Smith Machine") || n.includes("(Smith)") },
+    { block:2, test: n => n.includes("Machine") },
+    { block:3, test: n => true },
+  ],
   "upper-b": [
     { block:1, test: n => n.includes("Cable") || n.includes("Pulldown") || n.includes("Face Pull") },
     { block:2, test: n => true },
@@ -403,6 +408,7 @@ const STRIPE_COLORS = {
 const DEFAULT_PLAN = {
   "upper-a": {
     label:"Upper Body A",
+    walkMins: 10,
     exercises:[
       // Block 1 — Smith Machine
       {name:"Smith Machine Flat Press",        muscle:"Chest",     sets:3, reps:"12–15", superset:false, block:1},
@@ -421,7 +427,8 @@ const DEFAULT_PLAN = {
     ]
   },
   "lower": {
-    label:"Lower Body",
+    label:"Lower Body A",
+    walkMins: 20,
     exercises:[
       // Block 1 — Smith Machine
       {name:"Smith Machine Hip Thrust",      muscle:"Glutes",     sets:3, reps:"12–15", superset:false, block:1},
@@ -436,8 +443,26 @@ const DEFAULT_PLAN = {
     ],
     abs:[]
   },
+  "lower-b": {
+    label:"Lower Body B",
+    walkMins: 20,
+    exercises:[
+      // Block 1 — Smith Machine
+      {name:"Smith Machine Glute Bridge",    muscle:"Glutes",     sets:3, reps:"12–15", superset:false, block:1},
+      {name:"Hack Squat (Smith)",            muscle:"Quads",      sets:3, reps:"12–15", superset:false, block:1},
+      // Block 2 — Machines
+      {name:"Leg Extension Machine",         muscle:"Quads",      sets:3, reps:"12–15", superset:false, block:2},
+      {name:"Leg Curl Machine (Seated)",     muscle:"Hamstrings", sets:3, reps:"12–15", superset:false, block:2},
+      // Block 3 — Free Weights
+      {name:"Stiff-Leg Deadlift",            muscle:"Hamstrings", sets:3, reps:"12–15", superset:false, block:3},
+      {name:"Curtsy Lunge ★",               muscle:"Glutes",     sets:3, reps:"12–15", superset:false, block:3},
+      {name:"Seated Calf Raise",             muscle:"Calves",     sets:3, reps:"15–20", superset:false, block:3},
+    ],
+    abs:[]
+  },
   "upper-b": {
     label:"Upper Body B",
+    walkMins: 10,
     exercises:[
       // Block 1 — Cable Stack
       {name:"Straight-Arm Pulldown",   muscle:"Back",      sets:3, reps:"12–15", superset:false, block:1},
@@ -457,19 +482,19 @@ const DEFAULT_PLAN = {
 };
 
 const SCHEDULE = [
-  {day:"Monday",    type:"upper-a", kind:"weights"},
-  {day:"Tuesday",   type:"lower",   kind:"weights"},
-  {day:"Wednesday", type:null,      kind:"pilates"},
-  {day:"Thursday",  type:"upper-b", kind:"weights"},
-  {day:"Friday",    type:null,      kind:"pilates"},
-  {day:"Saturday",  type:null,      kind:"pilates"},
-  {day:"Sunday",    type:null,      kind:"rest"},
+  {day:"Monday",    type:"upper-a",  kind:"weights"},
+  {day:"Tuesday",   type:"lower",    kind:"weights"},
+  {day:"Wednesday", type:"lower-b",  kind:"weights"},
+  {day:"Thursday",  type:"upper-b",  kind:"weights"},
+  {day:"Friday",    type:null,       kind:"pilates"},
+  {day:"Saturday",  type:null,       kind:"pilates"},
+  {day:"Sunday",    type:null,       kind:"rest"},
 ];
 
 // ─── PLAN VERSION — bump this whenever DEFAULT_PLAN structure/order changes ──
-const PLAN_VERSION = 2;
+const PLAN_VERSION = 3;
 if (parseInt(localStorage.getItem("plan_version") || "0") < PLAN_VERSION) {
-  ["upper-a","lower","upper-b"].forEach(t => localStorage.removeItem("plan_" + t));
+  ["upper-a","lower","lower-b","upper-b"].forEach(t => localStorage.removeItem("plan_" + t));
   localStorage.setItem("plan_version", PLAN_VERSION);
 }
 
@@ -558,7 +583,7 @@ function renderSchedule() {
         let dotHTML = e.day.slice(0,2).toUpperCase();
         let planLabel = "";
         if (e.type) planLabel = getPlan(e.type).label;
-        else if (e.kind === "pilates") planLabel = "Pilates @ Align";
+        else if (e.kind === "pilates") planLabel = "Walk + Pilates Class";
         else planLabel = "Rest Day";
 
         return `<div class="day-card ${isToday?"today":""} ${!clickable?"no-tap":""}"
@@ -584,9 +609,10 @@ function renderWorkout() {
 
   document.getElementById("w-done-badge").style.display = allDone ? "block" : "none";
 
+  const walkMins = activePlan.walkMins || 20;
   let html = `<div class="workout-meta">
     <div><h2>${activePlan.label}</h2>
-    <p>20 min walk + ${exList.length} exercises${activePlan.abs?.length ? " + abs" : ""}</p></div>
+    <p>${walkMins} min walk + ${exList.length} exercises${activePlan.abs?.length ? " + abs" : ""}</p></div>
     <button class="new-week-btn" onclick="doNewWeek('${type}')">New Week ↻</button>
   </div>
   <div class="ex-list">`;
@@ -599,7 +625,7 @@ function renderWorkout() {
         <div class="cardio-icon">🚶‍♀️</div>
         <div class="cardio-info">
           <div class="cardio-title">Incline Walk</div>
-          <div class="cardio-sub">20 min · 10% incline · warm-up pace</div>
+          <div class="cardio-sub">${walkMins} min · 10% incline · warm-up pace</div>
         </div>
         <button class="cardio-check ${session.walkDone?"done":""}"
           onclick="toggleWalk()">${session.walkDone?"✓":"○"}</button>
@@ -876,7 +902,7 @@ function closeSwap() {
 
 // ─── NEW WEEK ─────────────────────────────────────────────────────────────
 function doNewWeek(type) {
-  if (!confirm("Generate a new week? Exercises rotate within the same muscle groups.")) return;
+  if (!confirm("Rotate exercises for a new week?")) return;
   const plan = JSON.parse(JSON.stringify(DEFAULT_PLAN[type]));
   const used = [];
   plan.exercises = plan.exercises.map(ex => {
